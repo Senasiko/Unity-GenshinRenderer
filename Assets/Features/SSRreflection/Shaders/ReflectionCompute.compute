@@ -1,0 +1,155 @@
+#pragma kernel ReflectionMain
+#pragma kernel BlurXMain
+#pragma kernel BlurYMain
+#pragma kernel MixMain
+#pragma enable_d3d11_debug_symbols
+
+#include "Packages/com.unity.render-pipelines.universal/ShaderLibrary/Core.hlsl"
+#include "Packages/com.unity.render-pipelines.core/ShaderLibrary/Color.hlsl"
+#include "../../../Shaders/Deferred/GBuffer.hlsl"
+#include "./SSR.hlsl"
+
+RWTexture2D<float4> _ReflectTex;
+
+// Texture2D _GBuffer0;
+// Texture2D _GBuffer1;
+// Texture2D _GBuffer2;
+// Texture2D _CustomGBuffer3;
+// Texture2D _CameraDepthTexture;
+Texture2D _CameraColorAttachmentA;
+float4x4 _ScreenToWorld[2];
+
+int _GroupSizeX;
+int _GroupSizeY;
+
+#define ThreadSizeX 8
+#define ThreadSizeY 8
+
+bool isSSR(uint flags)
+{
+    return (kMaterialFlagSSR & flags) == 1;
+}
+
+float2 GetPositionCS(uint2 id)
+{
+    return float2((float)id.x / (ThreadSizeX * _GroupSizeX), (float)id.y / (ThreadSizeY * _GroupSizeY));  
+}
+
+uint2 GetTexSize()
+{
+    return uint2(_GroupSizeX * ThreadSizeX, _GroupSizeY * ThreadSizeY);
+}
+
+GBufferData DecodeComputeGBufferData(uint3 id : SV_DispatchThreadID)
+{
+    float d        = _CameraDepthTexture[id.xy].x; 
+    half4 gbuffer0 = _GBuffer0[id.xy];
+    half4 gbuffer1 = _GBuffer1[id.xy];
+    half4 gbuffer2 = _GBuffer2[id.xy];
+    half4 gbuffer3 = _CustomGBuffer3[id.xy];
+    return DecodeGBuffer(d, gbuffer0, gbuffer1, gbuffer2, gbuffer3);
+}
+
+[numthreads(ThreadSizeX, ThreadSizeY, 1)]
+void ReflectionMain(uint3 id : SV_DispatchThreadID)
+{
+    GBufferData gBufferData = DecodeComputeGBufferData(id);
+    if (isSSR(gBufferData.materialFlags))
+    {
+        float4 posWS = mul(_ScreenToWorld[0], float4(GetPositionCS(id.xy), gBufferData.depth, 1.0));
+        posWS.xyz *= rcp(posWS.w);
+        float4 sourceColor = SRGBToLinear(_CameraColorAttachmentA[id.xy]);
+        _ReflectTex[id.xy] = float4(GetSSRColor(sourceColor, gBufferData, GetWorldSpaceNormalizeViewDir(posWS.xyz), posWS), sourceColor.a);   
+    }
+}
+                                                            
+RWTexture2D<float4> _BlurTex;
+
+#define BlurRadius 2
+#define CacheSize (ThreadSizeX + 2 * BlurRadius)
+groupshared float4 gCache[CacheSize];
+
+[numthreads(ThreadSizeX, 1, 1)]
+void BlurXMain(uint3 groupThreadID : SV_GroupThreadID, uint3 dispatchThreadId : SV_DispatchThreadID)
+{
+    GBufferData gBufferData = DecodeComputeGBufferData(dispatchThreadId);
+    if (!isSSR(gBufferData.materialFlags)) return;
+    uint2 texSize = GetTexSize();
+    int clampedDisX = min(dispatchThreadId.x, texSize.x - 1);
+    int clampedDisY = min(dispatchThreadId.y, texSize.y - 1);
+    if (groupThreadID.x < BlurRadius)
+    {
+        int x = max(clampedDisX - BlurRadius, 0);
+        uint2 clampedPos = uint2(x, clampedDisX);
+        gCache[groupThreadID.x] = _ReflectTex[clampedPos];
+    }
+    else if (groupThreadID.x >= ThreadSizeX - BlurRadius)
+    {
+        int x = min(clampedDisX + BlurRadius, texSize.x - 1);
+        uint2 clampedPos = uint2(x, clampedDisY);
+        gCache[groupThreadID.x + 2 * BlurRadius] = _ReflectTex[clampedPos];
+    }
+
+    uint2 clampedPos = uint2(clampedDisX, clampedDisY);
+    gCache[groupThreadID.x + BlurRadius] = _ReflectTex[clampedPos];
+
+    GroupMemoryBarrierWithGroupSync();
+    float4 blurColor = float4(0.0f, 0.0f, 0.0f, 0.0f);
+    
+    for (int i = -BlurRadius; i <= BlurRadius; i++)
+    {
+        int k = groupThreadID.x + BlurRadius + i;
+        GBufferData mixGBufferData = DecodeComputeGBufferData(k * _GroupSizeX);
+        if (!isSSR(mixGBufferData.materialFlags)) continue;;
+        blurColor += gCache[k];
+    }
+    _BlurTex[uint2(dispatchThreadId.x, dispatchThreadId.y)] = blurColor * 1.0f / (BlurRadius*2 +1);
+}
+
+
+[numthreads(ThreadSizeX, 1, 1)]
+void BlurYMain(uint3 groupThreadID : SV_GroupThreadID, uint3 dispatchThreadId : SV_DispatchThreadID)
+{
+    GBufferData gBufferData = DecodeComputeGBufferData(dispatchThreadId);
+    if (!isSSR(gBufferData.materialFlags)) return;
+
+    uint2 texSize = GetTexSize();
+    int clampedDisX = min(max(dispatchThreadId.x, 0), texSize.x - 1);
+    int clampedDisY = min(max(dispatchThreadId.y, 0), texSize.y - 1);
+    if (groupThreadID.y < BlurRadius)
+    {
+        int y = max(clampedDisY - BlurRadius, 0);
+        uint2 clampedPos = uint2(clampedDisX, y);
+        gCache[groupThreadID.y] = _BlurTex[clampedPos];
+    }
+    else if (groupThreadID.y >= ThreadSizeY - BlurRadius)
+    {
+        int y = min(clampedDisY + BlurRadius, texSize.y - 1);
+        uint2 clampedPos = uint2(clampedDisX, y);
+        gCache[groupThreadID.y + 2 * BlurRadius] = _BlurTex[clampedPos];
+
+    }
+    gCache[groupThreadID.y + BlurRadius] = _BlurTex[uint2(clampedDisX, clampedDisY)];
+
+    GroupMemoryBarrierWithGroupSync();
+    float4 blurColor = float4(0.0f, 0.0f, 0.0f, 0.0f);
+
+    for (int i = -BlurRadius; i <= BlurRadius; i++)
+    {
+        int k = groupThreadID.y + BlurRadius + i;
+        GBufferData mixGBufferData = DecodeComputeGBufferData(k * _GroupSizeY);
+        if (!isSSR(mixGBufferData.materialFlags)) continue;;
+        blurColor += gCache[k];
+    }
+    _BlurTex[uint2(dispatchThreadId.x, dispatchThreadId.y)] = blurColor * 1.0f / (BlurRadius * 2 + 1);
+}
+
+RWTexture2D<float4> _SSRResultTex;
+
+[numthreads(ThreadSizeX, ThreadSizeY, 1)]
+void MixMain (uint3 id : SV_DispatchThreadID)
+{
+    GBufferData gBufferData = DecodeComputeGBufferData(id);
+    _SSRResultTex[id.xy] = LinearToSRGB(SRGBToLinear(_CameraColorAttachmentA[id.xy]) * ((gBufferData.materialFlags &= kMaterialFlagSSR) ? _BlurTex[id.xy] : 1));
+}
+
