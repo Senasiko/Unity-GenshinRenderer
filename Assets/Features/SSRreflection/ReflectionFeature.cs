@@ -6,8 +6,6 @@ using UnityEngine.Rendering.Universal;
 public class ReflectionFeature : ScriptableRendererFeature {
     class ReflectionPass : ScriptableRenderPass
     {
-        private RenderTargetIdentifier source { get; set; }
-        private RenderTargetHandle destination {get; set;}
         private RenderTargetHandle ReflectID;
         private RenderTargetHandle BlurID;
         private RenderTargetHandle ResultID;
@@ -26,12 +24,6 @@ public class ReflectionFeature : ScriptableRendererFeature {
             ResultID.Init("_SSRResultTex");
         }
 
-        public void Setup(RenderTargetIdentifier source, RenderTargetHandle destination)
-        {
-            this.source = source;
-            this.destination = destination;
-        }
-
         public override void Execute(ScriptableRenderContext context, ref RenderingData renderingData)
         {
             CommandBuffer cmd = CommandBufferPool.Get("SSRPass");
@@ -40,7 +32,7 @@ public class ReflectionFeature : ScriptableRendererFeature {
             opaqueDescriptor.depthBufferBits = 0;
             opaqueDescriptor.enableRandomWrite = true;
 
-            if (destination == RenderTargetHandle.CameraTarget)
+            if (renderingData.cameraData.renderType == CameraRenderType.Base)
             {
                 cmd.GetTemporaryRT(ReflectID.id, opaqueDescriptor, FilterMode.Point);
                 cmd.GetTemporaryRT(BlurID.id, opaqueDescriptor, FilterMode.Point);
@@ -74,9 +66,6 @@ public class ReflectionFeature : ScriptableRendererFeature {
                 cmd.ReleaseTemporaryRT(BlurID.id);
                 cmd.ReleaseTemporaryRT(ResultID.id);
             }
-            else Blit(cmd, source, destination.Identifier());
-
-
             context.ExecuteCommandBuffer(cmd);
             CommandBufferPool.Release(cmd);
         }
@@ -84,12 +73,10 @@ public class ReflectionFeature : ScriptableRendererFeature {
         public override void FrameCleanup(CommandBuffer cmd)
         {
 
-            if (destination == RenderTargetHandle.CameraTarget)
-            {
-                cmd.ReleaseTemporaryRT(BlurID.id);
-                cmd.ReleaseTemporaryRT(ReflectID.id); 
-                cmd.ReleaseTemporaryRT(ResultID.id);
-            }
+            cmd.ReleaseTemporaryRT(BlurID.id);
+            cmd.ReleaseTemporaryRT(ReflectID.id); 
+            cmd.ReleaseTemporaryRT(ResultID.id);
+        
         }
 
     }
@@ -124,7 +111,6 @@ public class ReflectionFeature : ScriptableRendererFeature {
             Debug.LogWarningFormat("Missing Reflection Shader");
             return;
         }
-        reflectionPass.Setup(renderer.cameraColorTarget, RenderTargetHandle.CameraTarget);
         renderer.EnqueuePass(reflectionPass);
     }
 }

@@ -28,7 +28,7 @@ half4 UniversalLighting(Varyings input, InputData inputData, SurfaceData surface
     BRDFData brdfDataClearCoat = CreateClearCoatBRDFData(surfaceData, brdfData);
     half4 shadowMask = CalculateShadowMask(inputData);
     AmbientOcclusionFactor aoFactor = CreateAmbientOcclusionFactor(inputData, surfaceData);
-    uint meshRenderingLayers = GetMeshRenderingLightLayer();
+    uint meshRenderingLayers = GetMeshRenderingLayer();
     Light mainLight = GetMainLight(inputData, shadowMask, aoFactor);
     MixRealtimeAndBakedGI(mainLight, inputData.normalWS, inputData.bakedGI);
 
@@ -41,7 +41,7 @@ half4 UniversalLighting(Varyings input, InputData inputData, SurfaceData surface
     if (IsMatchingLightLayer(mainLight.layerMask, meshRenderingLayers))
     {
         SetupForwardShadowFactor(input, mainLight, inputData.normalWS, shadowParams);
-        lightingData.mainLightColor = RenderLight(shadowParams, specularParams.color, mainLight,  inputData.normalWS, inputData.viewDirectionWS);
+        lightingData.mainLightColor = RenderLight(shadowParams, surfaceData, mainLight,  inputData.normalWS, inputData.viewDirectionWS);
     }
 
     #if defined(_ADDITIONAL_LIGHTS)

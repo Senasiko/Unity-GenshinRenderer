@@ -10,10 +10,12 @@ Shader "Custom/SurfaceShader"
         _ShadowColor ("ShadowColor", Color) = (0.5, 0.5, 0.5, 0.5)
         _ShadowMid ("ShadowMid", Range(0,1)) = 0.5
         _ShadowHardness ("ShadowHardness", Range(0,1)) = 0.3
+        [Toggle(_)]_IsRampShadow ("RampShadow", float) = 0
         // Specular
         _SpecularColor ("SpecularColor", Color) = (1,1,1,1)
         _SpecularIntensity ("SpecularIntensity", Float) = 2
         _ILMTexture("ILMTex ", 2D) = "white" {}
+        _MetalMap("MetalMap", 2D) = "white" {}
         // Outline
         [Header(Outline)]
         [Space(10)][Toggle(_OUTLINE)] _OUTLINE ("Outline", Float) = 1
@@ -94,7 +96,7 @@ Shader "Custom/SurfaceShader"
                 InitializeShadowParams(shadowParams);
 
                 SpecularParams specularParams;
-                InitializeSpecularParams(ilmData, specularParams);
+                InitializeSpecularParams(input.uv, ilmData, specularParams);
                 
                 surfaceData.albedo *= _BaseColorIntensity;
                 surfaceData.metallic = ilmData.metallic;
@@ -111,7 +113,7 @@ Shader "Custom/SurfaceShader"
                 {
                     materialFlags += kMaterialFlagSSR;
                 }
-                return EncodeGBuffer(inputData, surfaceData, materialFlags, _ShadingModel, half3(shadowParams.mid, shadowParams.hardness, shadowParams.factor));
+                return EncodeGBuffer(inputData, surfaceData, materialFlags, _ShadingModel, half3(shadowParams.mid, shadowParams.bIsRamp, shadowParams.hardness));
             }
             ENDHLSL
         }
@@ -176,7 +178,7 @@ Shader "Custom/SurfaceShader"
                 InitializeShadowParams(shadowParams);
 
                 SpecularParams specularParams;
-                InitializeSpecularParams(ilmData, specularParams);
+                InitializeSpecularParams(input.uv, ilmData, specularParams);
                 
                 SETUP_DEBUG_TEXTURE_DATA(inputData, input.uv, _BaseMap);
                 half4 color = UniversalLighting(input, inputData, surfaceData, ilmData, shadowParams, specularParams);

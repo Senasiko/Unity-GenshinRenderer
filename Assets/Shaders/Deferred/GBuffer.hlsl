@@ -111,14 +111,16 @@ EncodedGBufferData EncodeGBuffer(InputData inputData, SurfaceData surfaceData, u
     buffer.GBuffer0 = half4(surfaceData.albedo.rgb, PackMaterialFlags(materialFlags));  // diffuse           diffuse         diffuse         materialFlags   (sRGB rendertarget)
     buffer.GBuffer1 = half4(packedSpecular, surfaceData.occlusion);                              // metallic/specular specular        specular        occlusion
     buffer.GBuffer2 = half4(packedNormalWS, surfaceData.smoothness);                             // encoded-normal    encoded-normal  encoded-normal  smoothness
-    buffer.GBuffer3 = half4(shadingModel,  customData);
+    buffer.GBuffer3 = half4(shadingModel, customData);
+    #if _RENDER_PASS_ENABLED
+    output.GBuffer4 = inputData.positionCS.z;
+    #endif
     #if OUTPUT_SHADOWMASK
     output.GBUFFER_SHADOWMASK = inputData.shadowMask; // will have unity_ProbesOcclusion value if subtractive lighting is used (baked)
     #endif
-    #ifdef _LIGHT_LAYERS
-    uint renderingLayers = GetMeshRenderingLightLayer();
-    // Note: we need to mask out only 8bits of the layer mask before encoding it as otherwise any value > 255 will map to all layers active
-    buffer.GBUFFER_LIGHT_LAYERS = float4((renderingLayers & 0x000000FF) / 255.0, 0.0, 0.0, 0.0);
+    #ifdef _WRITE_RENDERING_LAYERS
+    uint renderingLayers = GetMeshRenderingLayer();
+    output.GBUFFER_LIGHT_LAYERS = float4(EncodeMeshRenderingLayer(renderingLayers), 0.0, 0.0, 0.0);
     #endif
 
     return buffer;

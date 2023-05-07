@@ -1,34 +1,34 @@
 #pragma once
+#include "../Deferred/GBuffer.hlsl"
 #include "./Surface.hlsl"
 #include "./Face.hlsl"
+
+TEXTURE2D(_MatMap);
+
 float CalcSpecularTerm(float metallic, half3 lightDirectionWS, half3 viewDirectionWS, half3 normalWS)
 {
-    float3 lightDirectionWSFloat3 = float3(lightDirectionWS);
-    float3 halfDir = SafeNormalize(lightDirectionWSFloat3 + float3(viewDirectionWS));
+    float2 normalVS = TransformWorldToViewDir(normalWS) * 0.5 + 0.5;
+    return SAMPLE_TEXTURE2D_X(_MatMap, my_point_clamp_sampler, normalVS) * metallic;
 
-    float NoH = saturate(dot(float3(normalWS), halfDir));
-    half LoH = half(saturate(dot(lightDirectionWSFloat3, halfDir)));
+    float2 metallicUV = dot(normalWS, normalize(lightDirectionWS + viewDirectionWS));
 
-    float perceptualRoughness = PerceptualSmoothnessToPerceptualRoughness(metallic);
-    float roughness           = max(PerceptualRoughnessToRoughness(perceptualRoughness), HALF_MIN_SQRT);
-    float roughness2          = max(roughness * roughness, HALF_MIN);
-    float normalizationTerm   = roughness * half(4.0) + half(2.0);
-    float roughness2MinusOne  = roughness2 - half(1.0);
-    float d = NoH * NoH * roughness2MinusOne + 1.00001f;
+    return  metallicUV.x * metallic;
+    float NdV = dot(normalWS, viewDirectionWS); 
+    float NdL = dot(normalWS, lightDirectionWS);
 
-    half LoH2 = LoH * LoH;
-    half specularTerm = roughness2 / ((d * d) * max(0.1h, LoH2) * normalizationTerm);
 
-    return saturate(specularTerm);
+    return (smoothstep(0.7, 0.8, metallicUV.y) * 0.7 + smoothstep(0.3, 0.4, metallicUV.y) * 0.3) * metallic;
 }
+
 
 half3 CalcDiffuse(ShadowParams shadowParams, Light light)
 {
     return lerp(shadowParams.color, saturate(light.color), shadowParams.factor);
 }
 
-half3 RenderLight(ShadowParams shadowParams, half3 specularColor, Light light, half3 normalWS, half3 viewDirectionWS )
+half3 RenderLight(ShadowParams shadowParams, SurfaceData surfaceData, Light light, half3 normalWS, half3 viewDirectionWS )
 {
     half distanceAttenuation = min(1,light.distanceAttenuation);
-    return distanceAttenuation * CalcDiffuse(shadowParams, light);
+    half3 diffuseColor = CalcDiffuse(shadowParams, light);
+    return distanceAttenuation * diffuseColor;
 }

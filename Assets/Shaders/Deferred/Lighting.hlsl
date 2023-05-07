@@ -16,23 +16,37 @@ struct Varyings
 
 void DeferredInitializeSurfaceData(GBufferData gBufferData, inout SurfaceData surfaceData)
 {
-    surfaceData.metallic = gBufferData.metallic * 0.6;
-    half oneMinusReflectivity = OneMinusReflectivityMetallic(surfaceData.metallic);
-    surfaceData.albedo = gBufferData.albedo * oneMinusReflectivity;
-    surfaceData.specular = lerp(kDieletricSpec.rgb, gBufferData.albedo, gBufferData.metallic);
+    surfaceData.metallic = gBufferData.metallic;
+    if ((gBufferData.materialFlags & kMaterialFlagSpecularSetup) != 0)
+    {
+        surfaceData.albedo = gBufferData.albedo;
+        surfaceData.specular = gBufferData.specular;
+    } else
+    {
+        surfaceData.albedo = lerp(gBufferData.albedo, pow(gBufferData.albedo, gBufferData.metallic + 2), gBufferData.metallic);
+        surfaceData.specular = gBufferData.albedo;
+    }
 }
 
-void DeferredInitializeShadowParams(GBufferData gBufferData, inout ShadowParams shadowParams, Light light)
+void DeferredInitializeShadowParams(GBufferData gBufferData, SurfaceData surfaceData, Light light, inout ShadowParams shadowParams)
 {
     [BRANCH]
     if (gBufferData.shadingModel == SHADING_MODEL_SURFACE)
     {
-        shadowParams.color = 0;
+        shadowParams.color = surfaceData.albedo * 0.6;
         shadowParams.mid = gBufferData.customData.r;
-        shadowParams.hardness = gBufferData.customData.g;
-        shadowParams.factor = light.shadowAttenuation * GetSurfaceShadowFactor(light, gBufferData.normal, shadowParams);
+        shadowParams.bIsRamp = gBufferData.customData.g;
+        shadowParams.hardness = gBufferData.customData.b / 1.3;
+        shadowParams.factor = GetSurfaceShadowFactor(light, gBufferData.normal, shadowParams);
+
+        if (shadowParams.bIsRamp == 1)
+        {
+            float3 rampShadowColor = GetRampShadowColor(smoothstep(0, 1, 1 - shadowParams.factor));
+            shadowParams.color = lerp(shadowParams.color, rampShadowColor, smoothstep(0, 1, shadowParams.factor));   
+        }   
     } else if (gBufferData.shadingModel == SHADING_MODEL_FACE)
     {
+        shadowParams.color = pow(surfaceData.albedo, 1.3);
         shadowParams.factor = light.shadowAttenuation * GetFaceShadowFactor(gBufferData.customData.r, light.direction, half3(gBufferData.customData.gb, 0));
     } else
     {
@@ -40,36 +54,22 @@ void DeferredInitializeShadowParams(GBufferData gBufferData, inout ShadowParams 
     }
 }
 
-half3 MixShadow(half shadingModel, half3 color, half shadowFactor)
-{
-    if (shadingModel == SHADING_MODEL_SURFACE)
-    {
-        return lerp(color * 0.3, color, shadowFactor);
-    }
-    if (shadingModel == SHADING_MODEL_FACE)
-    {
-        return lerp(color * 0.3, color, shadowFactor);
-    }
-    return color * shadowFactor;
-}
-
-half4 AnimeDeferredLighting(GBufferData gBufferData, Light light, half3 viewDirectionWS) 
+half3 AnimeDeferredLighting(GBufferData gBufferData, Light light, half3 viewDirectionWS) 
 {
     // InputData inputData, SurfaceData surfaceData, ILMData ilmData, Light light, ShadowParams shadowParams, SpecularParams specularParams
     SurfaceData surfaceData = (SurfaceData)0;
     DeferredInitializeSurfaceData(gBufferData, surfaceData);
     ShadowParams shadowParams = (ShadowParams)0;
-    DeferredInitializeShadowParams(gBufferData, shadowParams, light);
-    // return half4(1,1,0,1);
-    // RenderLight(shadowParams, gBufferData.specular, light, gBufferData.normal, viewDirectionWS)
+    DeferredInitializeShadowParams(gBufferData, surfaceData, light, shadowParams);
+    
     #if defined(_DIRECTIONAL) && defined(_DEFERRED_FIRST_LIGHT)
     // half3 diffuseColor = CalcDiffuse(shadowParams, light);
     float specularTerm = CalcSpecularTerm(surfaceData.metallic, light.direction, viewDirectionWS, gBufferData.normal);
-    half3 finalColor = lerp(surfaceData.albedo, surfaceData.specular, specularTerm);
-    return half4(finalColor * 0.5 + MixShadow(gBufferData.shadingModel, finalColor, shadowParams.factor), 1); 
+    float3 finalColor = surfaceData.albedo + specularTerm * surfaceData.specular;
+    finalColor = lerp(shadowParams.color, finalColor, shadowParams.factor);
+    return finalColor; 
     #else
-    half3 finalColor = RenderLight(shadowParams, surfaceData.specular, light, gBufferData.normal, viewDirectionWS);
-    return half4(MixShadow(gBufferData.shadingModel, finalColor, shadowParams.factor), 1); 
+    half3 finalColor = RenderLight(shadowParams, surfaceData, light, gBufferData.normal, viewDirectionWS);
+    return finalColor; 
     #endif
-
 }

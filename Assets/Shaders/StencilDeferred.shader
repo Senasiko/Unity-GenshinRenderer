@@ -31,8 +31,8 @@ Shader "Custom/StencilDeferred"
     #include "Packages/com.unity.render-pipelines.universal/ShaderLibrary/Core.hlsl"
     #include "Packages/com.unity.render-pipelines.universal/Shaders/Utils/Deferred.hlsl"
     #include "Packages/com.unity.render-pipelines.universal/ShaderLibrary/Shadows.hlsl"
-    #include "./Deferred/Lighting.hlsl"
     #include "./Deferred/GBuffer.hlsl"
+    #include "./Deferred/Lighting.hlsl"
 
     struct Attributes
     {
@@ -119,11 +119,7 @@ Shader "Custom/StencilDeferred"
 
         bool materialReceiveShadowsOff = (materialFlags & kMaterialFlagReceiveShadowsOff) != 0;
 
-        #ifdef _LIGHT_LAYERS
         uint lightLayerMask =_LightLayerMask;
-        #else
-        uint lightLayerMask = DEFAULT_LIGHT_LAYERS;
-        #endif
 
         #if defined(_DIRECTIONAL)
             #if defined(_DEFERRED_MAIN_LIGHT)
@@ -225,15 +221,15 @@ Shader "Custom/StencilDeferred"
 
         #ifdef _LIGHT_LAYERS
         float4 renderingLayers = SAMPLE_TEXTURE2D_X_LOD(MERGE_NAME(_, GBUFFER_LIGHT_LAYERS), my_point_clamp_sampler, screen_uv, 0);
-        uint meshRenderingLayers = uint(renderingLayers.r * 255.5);
-        #else
-        uint meshRenderingLayers = DEFAULT_LIGHT_LAYERS;
+        uint meshRenderingLayers = DecodeMeshRenderingLayer(renderingLayers.r);
+        [branch] if (!IsMatchingLightLayer(unityLight.layerMask, meshRenderingLayers))
+            return half4(color, alpha); // Cannot discard because stencil must be updated.
         #endif
 
         half surfaceDataOcclusion = gbuffer1.a;
         uint materialFlags = UnpackMaterialFlags(gbuffer0.a);
 
-        half3 color = 0.0.xxx;
+        half3 color = 0.0;
         half alpha = 1.0;
 
         #if defined(_DEFERRED_MIXED_LIGHTING)
@@ -251,9 +247,6 @@ Shader "Custom/StencilDeferred"
         posWS.xyz *= rcp(posWS.w);
 
         Light unityLight = GetStencilLight(posWS.xyz, screen_uv, shadowMask, materialFlags);
-
-        [branch] if (!IsMatchingLightLayer(unityLight.layerMask, meshRenderingLayers))
-            return half4(color, alpha); // Cannot discard because stencil must be updated.
 
         #if defined(_SCREEN_SPACE_OCCLUSION) && !defined(_SURFACE_TYPE_TRANSPARENT)
             AmbientOcclusionFactor aoFactor = GetScreenSpaceAmbientOcclusion(screen_uv);

@@ -85,7 +85,7 @@ Shader "Custom/FaceShader"
                 InitializeShadowParams(shadowParams);
 
                 SpecularParams specularParams;
-                InitializeSpecularParams(ilmData, specularParams);
+                InitializeSpecularParams(input.uv, ilmData, specularParams);
                 
                 SETUP_DEBUG_TEXTURE_DATA(inputData, input.uv, _BaseMap);
                 half4 color = UniversalLighting(input, inputData, surfaceData, ilmData, shadowParams, specularParams);
@@ -120,9 +120,9 @@ Shader "Custom/FaceShader"
             #include "Packages/com.unity.render-pipelines.universal/ShaderLibrary/Core.hlsl"
             #include "Packages/com.unity.render-pipelines.universal/Shaders/LitInput.hlsl"
             #include "Packages/com.unity.render-pipelines.universal/Shaders/LitGBufferPass.hlsl"
-            #include "./Library/Surface.hlsl"
             #include "./Deferred/GBuffer.hlsl"
             #include "./Deferred/ShadingModel.hlsl"
+            #include "./Library/Surface.hlsl"
             
             Varyings vert(Attributes input)
             {
@@ -160,7 +160,7 @@ Shader "Custom/FaceShader"
                 InitializeInputData(input, surfaceData.normalTS, inputData);
                 
                 SpecularParams specularParams;
-                InitializeSpecularParams(ilmData, specularParams);
+                InitializeSpecularParams(input.uv, ilmData, specularParams);
                 
                 surfaceData.albedo *= _BaseColorIntensity;
                 surfaceData.metallic = ilmData.metallic;

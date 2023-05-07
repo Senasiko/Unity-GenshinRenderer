@@ -12,7 +12,7 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: a0d55d424258f054eb8b8cbdce0a9548, type: 3}
   m_Name: ReflectionFeature
   m_EditorClassIdentifier: 
-  m_Active: 1
+  m_Active: 0
   settings:
     reflectionShader: {fileID: 7200000, guid: af6c22609235ab348831bc64c1e90255, type: 3}
     maxStep: 100
@@ -31,6 +31,8 @@ MonoBehaviour:
   m_Name: ShadingModelFeature
   m_EditorClassIdentifier: 
   m_Active: 1
+  MatMap: {fileID: 2800000, guid: f0142ea25722a1c41bf48244c666e499, type: 3}
+  ShadowRampMap: {fileID: 2800000, guid: 89b2519edb17b4b4cb77e7a635fd93a8, type: 3}
 --- !u!114 &11400000
 MonoBehaviour:
   m_ObjectHideFlags: 0
@@ -50,7 +52,7 @@ MonoBehaviour:
   - {fileID: -8195096906131745011}
   - {fileID: -2239285509510282031}
   m_RendererFeatureMap: 0d571d8ac82a458ed1c4f57eb175ece0
-  m_UseNativeRenderPass: 1
+  m_UseNativeRenderPass: 0
   postProcessData: {fileID: 11400000, guid: 41439944d30ece34e96484bdb6645b55, type: 2}
   xrSystemData: {fileID: 11400000, guid: 60e1133243b97e347b653163a8c01b64, type: 2}
   shaders:
@@ -60,6 +62,7 @@ MonoBehaviour:
     samplingPS: {fileID: 4800000, guid: 04c410c9937594faa893a11dceb85f7e, type: 3}
     stencilDeferredPS: {fileID: 4800000, guid: ced75859267b05447827629107b0eead, type: 3}
     fallbackErrorPS: {fileID: 4800000, guid: e6e9a19c3678ded42a3bc431ebef7dbd, type: 3}
+    fallbackLoadingPS: {fileID: 4800000, guid: 7f888aff2ac86494babad1c2c5daeee2, type: 3}
     materialErrorPS: {fileID: 4800000, guid: 5fd9a8feb75a4b5894c241777f519d4e, type: 3}
     coreBlitPS: {fileID: 4800000, guid: 93446b5c5339d4f00b85c159e1159b7c, type: 3}
     coreBlitColorAndDepthPS: {fileID: 4800000, guid: d104b2fc1ca6445babb8e90b0758136b,
@@ -87,8 +90,6 @@ MonoBehaviour:
   m_DepthPrimingMode: 0
   m_CopyDepthMode: 0
   m_AccurateGbufferNormals: 0
-  m_ClusteredRendering: 0
-  m_TileSize: 32
   m_IntermediateTextureMode: 1
 --- !u!114 &3451014370370197860
 MonoBehaviour:
@@ -103,3 +104,5 @@ MonoBehaviour:
   m_Name: BeforeLight
   m_EditorClassIdentifier: 
   m_Active: 1
+  MatMap: {fileID: 0}
+  ShadowRampMap: {fileID: 0}
